@@ -7,9 +7,13 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
+    // No alias for @carbuddy/domain on purpose. Expo's Metro applies tsconfig
+    // `paths` as resolver aliases, so mapping it to the package source made the
+    // bundler load raw .ts with Node-ESM ".js" specifiers it cannot resolve.
+    // Resolving through the workspace symlink uses the built dist instead, which
+    // is also what the API does — one resolution story for both consumers.
     "paths": {
-      "@/*": ["./src/*"],
-      "@carbuddy/domain": ["../../packages/domain/src/index.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],

@@ -14,8 +14,10 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
-// Without this, a package hoisted to the root can be resolved twice and load
-// two copies of React.
-config.resolver.disableHierarchicalLookup = true;
+// Hierarchical lookup is deliberately left enabled (Metro's default). Turning it
+// off restricts resolution to `nodeModulesPaths` only, which breaks any package
+// npm chose not to hoist — `expo-asset`, for instance, installs nested under
+// `node_modules/expo/node_modules` and becomes unresolvable, failing the release
+// bundle with "Unable to resolve module expo-asset".
 
 module.exports = config;
