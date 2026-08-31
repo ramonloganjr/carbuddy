@@ -1,0 +1,627 @@
+// CarBuddy — PostgreSQL schema.
+//
+// Conventions that hold across every user-owned model:
+//   * `version`   monotonic counter bumped on write; the client sends the
+//                 version it edited against so concurrent edits are detected
+//                 rather than silently overwritten.
+//   * `updatedAt` breaks ties between genuinely concurrent writes.
+//   * `deletedAt` soft delete. Hard deletes cannot propagate to an offline
+//                 device — it would never learn the row was removed.
+//   * ids are client-generated UUIDs, so a record created offline keeps the
+//     same identity once it reaches the server and never needs remapping.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  /// Argon2id hash. Never a reversible encryption of the password.
+  passwordHash String
+  displayName  String
+  avatarUrl    String?
+  emailVerifiedAt DateTime?
+  /// Locks the account after repeated failed sign-ins.
+  lockedUntil  DateTime?
+  failedSignInCount Int  @default(0)
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  preferences   UserPreferences?
+  vehicles      Vehicle[]
+  documents     Document[]
+  reminders     Reminder[]
+  devices       Device[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  attachments   Attachment[]
+  memberships   OrganizationMember[]
+
+  @@index([email])
+  @@map("users")
+}
+
+/// Refresh tokens are stored hashed and rotated on every use.
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the token. A database leak must not yield usable tokens.
+  tokenHash String   @unique
+  deviceId  String?
+  /// Rotation chain. Reuse of a revoked token means it leaked, and the whole
+  /// family is revoked at once.
+  familyId  String   @db.Uuid
+  expiresAt DateTime
+  revokedAt DateTime?
+  replacedById String? @db.Uuid
+  createdAt DateTime @default(now())
+  userAgent String?
+  ipAddress String?
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model UserPreferences {
+  userId            String  @id @db.Uuid
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  distanceUnit      String  @default("km")
+  volumeUnit        String  @default("l")
+  economyStandard   String  @default("km_l")
+  pressureUnit      String  @default("kpa")
+  currency          String  @default("USD")
+  locale            String?
+  dateFormat        String  @default("system")
+  themeMode         String  @default("system")
+  dynamicColour     Boolean @default(true)
+  reduceMotion      Boolean @default(false)
+  hapticsEnabled    Boolean @default(true)
+  biometricLock     Boolean @default(false)
+  /// NotificationPreferences from @carbuddy/domain.
+  notifications     Json
+  defaultVehicleId  String? @db.Uuid
+  onboardingCompletedAt DateTime?
+
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_preferences")
+}
+
+// ---------------------------------------------------------------------------
+// Vehicles
+// ---------------------------------------------------------------------------
+
+model Vehicle {
+  id       String @id @db.Uuid
+  userId   String @db.Uuid
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nickname String
+  make     String  @default("")
+  model    String  @default("")
+  variant  String?
+  modelYear Int?
+  bodyType String?
+  colour   String?
+
+  engineType           String?
+  engineDisplacementCc Int?
+  cylinders            Int?
+  transmission         String?
+  drivetrain           String?
+  fuelType             String?
+  fuelTankCapacityL    Decimal? @db.Decimal(6, 2)
+  recommendedFuelGrade String?
+  batterySpecification Json?
+  tyreSpecification    Json?
+
+  /// Encrypted at rest with FIELD_ENCRYPTION_KEY — see CryptoService.
+  /// A VIN identifies a physical car and its owner's address through public
+  /// registries, so it is treated as sensitive rather than as a plain string.
+  vinEncrypted            String?
+  /// Deterministic HMAC of the VIN, so "do I already have this car?" can be
+  /// answered without decrypting every row.
+  vinFingerprint          String?
+  engineNumberEncrypted   String?
+  plateNumber             String?
+  registrationNumber      String?
+  registrationCountry     String?
+
+  purchasedAt        DateTime?
+  /// Minor currency units. Integers only — money never touches a float.
+  purchasePrice      Int?
+  purchaseOdometerKm Decimal? @db.Decimal(10, 1)
+  currency           String   @default("USD")
+  dealerName         String?
+  dealerContact      String?
+  financing          Json?
+  warranty           Json?
+
+  currentOdometerKm Decimal  @default(0) @db.Decimal(10, 1)
+  odometerUpdatedAt DateTime?
+  photoAttachmentId String?  @db.Uuid
+  isPrimary         Boolean  @default(false)
+  archivedAt        DateTime?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  fuelRecords         FuelRecord[]
+  maintenanceRecords  MaintenanceRecord[]
+  maintenanceSchedules MaintenanceSchedule[]
+  components          VehicleComponent[]
+  documents           Document[]
+  expenses            Expense[]
+  odometerReadings    OdometerReading[]
+  reminders           Reminder[]
+  assignments         VehicleAssignment[]
+
+  @@index([userId, deletedAt])
+  @@index([userId, archivedAt])
+  @@index([vinFingerprint])
+  @@map("vehicles")
+}
+
+model OdometerReading {
+  id         String   @id @db.Uuid
+  vehicleId  String   @db.Uuid
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  odometerKm Decimal  @db.Decimal(10, 1)
+  recordedAt DateTime
+  source     String   @default("manual")
+  sourceId   String?  @db.Uuid
+  notes      String?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([vehicleId, recordedAt(sort: Desc)])
+  @@map("odometer_readings")
+}
+
+// ---------------------------------------------------------------------------
+// Fuel
+// ---------------------------------------------------------------------------
+
+model FuelRecord {
+  id         String   @id @db.Uuid
+  vehicleId  String   @db.Uuid
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  filledAt   DateTime
+  /// Canonical kilometres. Imperial input is converted on the client.
+  odometerKm Decimal  @db.Decimal(10, 1)
+  /// Canonical litres.
+  litres     Decimal  @db.Decimal(8, 3)
+  totalCost  Int
+  currency   String
+  fuelType   String   @default("gasoline")
+  fuelGrade  String?
+  isFullTank Boolean  @default(true)
+  missedFill Boolean  @default(false)
+  stationName   String?
+  stationBrand  String?
+  paymentMethod String?
+  notes         String?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  attachments Attachment[]
+
+  /// Consumption is computed in odometer order, so this is the index that
+  /// matters most — it makes the whole analysis a single ordered scan.
+  @@index([vehicleId, deletedAt, odometerKm])
+  @@index([vehicleId, filledAt(sort: Desc)])
+  @@map("fuel_records")
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance
+// ---------------------------------------------------------------------------
+
+model MaintenanceRecord {
+  id        String   @id @db.Uuid
+  vehicleId String   @db.Uuid
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  category   String
+  title      String?
+  servicedAt DateTime
+  odometerKm Decimal  @db.Decimal(10, 1)
+  providerName    String?
+  providerContact String?
+
+  partsCost  Int @default(0)
+  labourCost Int @default(0)
+  taxCost    Int @default(0)
+  /// Stored, not derived: receipts round in ways the components do not always
+  /// reproduce, and the user's total must match the paper in their hand.
+  totalCost  Int @default(0)
+  currency   String
+
+  partsReplaced        String[]
+  warrantyMonths       Int?
+  warrantyDistanceKm   Decimal? @db.Decimal(10, 1)
+  nextServiceDate      DateTime?
+  nextServiceOdometerKm Decimal? @db.Decimal(10, 1)
+  notes                String?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  attachments Attachment[]
+
+  @@index([vehicleId, servicedAt(sort: Desc)])
+  @@index([vehicleId, category, servicedAt(sort: Desc)])
+  @@map("maintenance_records")
+}
+
+model MaintenanceSchedule {
+  id        String  @id @db.Uuid
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  category           String
+  title              String
+  intervalMonths     Int?
+  intervalDistanceKm Decimal? @db.Decimal(10, 1)
+  lastServicedAt     DateTime?
+  lastServiceOdometerKm Decimal? @db.Decimal(10, 1)
+  leadTimeDays       Int?
+  leadTimeKm         Decimal? @db.Decimal(10, 1)
+  enabled            Boolean  @default(true)
+  notes              String?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([vehicleId, enabled, deletedAt])
+  @@map("maintenance_schedules")
+}
+
+model VehicleComponent {
+  id        String  @id @db.Uuid
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  kind          String
+  label         String?
+  brand         String?
+  model         String?
+  specification String?
+  installedAt         DateTime
+  installedOdometerKm Decimal  @db.Decimal(10, 1)
+  purchasePrice       Int?
+  currency            String?
+  expectedLifeMonths  Int?
+  expectedLifeKm      Decimal? @db.Decimal(10, 1)
+  warrantyExpiresAt   DateTime?
+  warrantyDistanceKm  Decimal? @db.Decimal(10, 1)
+  rotationIntervalKm  Decimal? @db.Decimal(10, 1)
+  lastRotatedOdometerKm Decimal? @db.Decimal(10, 1)
+  removedAt           DateTime?
+  removedOdometerKm   Decimal? @db.Decimal(10, 1)
+  notes               String?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([vehicleId, removedAt, deletedAt])
+  @@map("vehicle_components")
+}
+
+// ---------------------------------------------------------------------------
+// Documents & expenses
+// ---------------------------------------------------------------------------
+
+model Document {
+  id        String   @id @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Null for driver-level documents such as a licence, which must survive the
+  /// user selling a vehicle.
+  vehicleId String?  @db.Uuid
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  type  String
+  title String
+  /// Encrypted: a policy or licence number is directly usable for fraud.
+  documentNumberEncrypted String?
+  issuer    String?
+  issuedAt  DateTime?
+  expiresAt DateTime?
+  notes     String?
+  reminderOffsetsDays Int[]
+  reminderEnabled     Boolean @default(true)
+  archivedAt          DateTime?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  attachments Attachment[]
+
+  /// Drives the nightly expiry sweep across all users.
+  @@index([expiresAt, reminderEnabled, deletedAt])
+  @@index([userId, deletedAt])
+  @@index([vehicleId, deletedAt])
+  @@map("documents")
+}
+
+model Expense {
+  id        String  @id @db.Uuid
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  category   String
+  title      String?
+  amount     Int
+  currency   String
+  incurredAt DateTime
+  odometerKm Decimal? @db.Decimal(10, 1)
+  vendor     String?
+  notes      String?
+  /// `manual`, `fuel_record` or `maintenance_record`. Projected rows are never
+  /// stored — this exists only for manual entries that reference a source.
+  source     String  @default("manual")
+  sourceId   String? @db.Uuid
+  recurrenceId String? @db.Uuid
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  attachments Attachment[]
+
+  @@index([vehicleId, incurredAt(sort: Desc)])
+  @@index([vehicleId, category, incurredAt(sort: Desc)])
+  @@map("expenses")
+}
+
+// ---------------------------------------------------------------------------
+// Reminders & notifications
+// ---------------------------------------------------------------------------
+
+model Reminder {
+  id        String   @id @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleId String?  @db.Uuid
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  title            String
+  body             String?
+  dueAt            DateTime?
+  dueOdometerKm    Decimal?  @db.Decimal(10, 1)
+  leadTimeDays     Int?
+  repeatEveryDays  Int?
+  enabled          Boolean   @default(true)
+  completedAt      DateTime?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId, enabled, dueAt])
+  @@map("reminders")
+}
+
+model Notification {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @db.Uuid
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Content-derived key from the domain planner. Unique per user, which is
+  /// what makes the delivery job idempotent — a retried job cannot double-send.
+  planKey  String
+  kind     String
+  severity String
+  title    String
+  body     String
+  deepLink String
+  channelId String
+
+  scheduledFor DateTime
+  sentAt       DateTime?
+  readAt       DateTime?
+  failureReason String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, planKey])
+  @@index([scheduledFor, sentAt])
+  @@map("notifications")
+}
+
+model Device {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @db.Uuid
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Client-generated per-install id; also the sync tie-break key.
+  deviceId  String
+  pushToken String?
+  platform  String
+  osVersion String?
+  appVersion String?
+  lastSeenAt DateTime @default(now())
+  disabledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, deviceId])
+  @@index([pushToken])
+  @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+model Attachment {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fileName String
+  mimeType String
+  byteSize Int
+  /// Object-storage key. Files are never served from the API directly; clients
+  /// get a short-lived signed URL instead.
+  storageKey String @unique
+  width      Int?
+  height      Int?
+  uploadState String @default("pending")
+
+  fuelRecordId        String? @db.Uuid
+  fuelRecord          FuelRecord? @relation(fields: [fuelRecordId], references: [id], onDelete: Cascade)
+  maintenanceRecordId String? @db.Uuid
+  maintenanceRecord   MaintenanceRecord? @relation(fields: [maintenanceRecordId], references: [id], onDelete: Cascade)
+  documentId          String? @db.Uuid
+  document            Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  expenseId           String? @db.Uuid
+  expense             Expense? @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId, deletedAt])
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// Sync
+// ---------------------------------------------------------------------------
+
+/// Ledger of applied mutations, keyed by the client's mutation id.
+///
+/// This is what makes push idempotent: if a client never receives the response
+/// and retries, the server recognises the mutation id and replies `duplicate`
+/// instead of applying it twice. Without it, a dropped response on a flaky
+/// connection duplicates a fill-up.
+model SyncRecord {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  mutationId String
+  entity     String
+  entityId   String   @db.Uuid
+  operation  String
+  deviceId   String
+  appliedAt  DateTime @default(now())
+  resultVersion Int
+
+  @@unique([userId, mutationId])
+  @@index([userId, appliedAt])
+  @@map("sync_records")
+}
+
+model AuditLog {
+  id     String  @id @default(uuid()) @db.Uuid
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action     String
+  entity     String?
+  entityId   String?
+  ipAddress  String?
+  userAgent  String?
+  /// Never contains credentials or decrypted sensitive fields.
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Fleet layer (post-MVP)
+//
+// Present in the schema from day one, unused by the MVP. Adding organisations
+// later would otherwise mean re-keying every ownership check in the codebase —
+// the one migration that genuinely is hard to retrofit.
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  members     OrganizationMember[]
+  assignments VehicleAssignment[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String       @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// `owner` | `admin` | `manager` | `driver`
+  role           String       @default("driver")
+  invitedAt      DateTime     @default(now())
+  acceptedAt     DateTime?
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+model VehicleAssignment {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicleId      String       @db.Uuid
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driverUserId   String?      @db.Uuid
+  assignedFrom   DateTime     @default(now())
+  assignedUntil  DateTime?
+  costCentre     String?
+
+  @@index([organizationId, vehicleId])
+  @@map("vehicle_assignments")
+}

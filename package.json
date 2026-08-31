@@ -1,0 +1,37 @@
+{
+  "name": "carbuddy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CarBuddy — a complete digital vehicle ownership platform. Know your car. Understand its costs. Maintain it on time. Keep everything in one place.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.19.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "domain:build": "npm run build -w @carbuddy/domain",
+    "domain:test": "npm run test -w @carbuddy/domain",
+    "mobile": "npm run start -w @carbuddy/mobile",
+    "mobile:ios": "npm run ios -w @carbuddy/mobile",
+    "mobile:android": "npm run android -w @carbuddy/mobile",
+    "api:dev": "npm run start:dev -w @carbuddy/api",
+    "test": "npm run test -w @carbuddy/domain && npm run test -w @carbuddy/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "lint:fix": "eslint . --fix",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.19.0"
+  }
+}

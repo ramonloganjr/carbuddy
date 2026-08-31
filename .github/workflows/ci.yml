@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A new push supersedes an in-flight run on the same branch.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20.19.0'
+
+jobs:
+  domain:
+    name: Domain (logic + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck -w @carbuddy/domain
+      - name: Test with coverage
+        # Thresholds are enforced in vitest.config.ts, so a drop in coverage
+        # fails the build rather than being noticed in a review months later.
+        run: npm run test:coverage -w @carbuddy/domain
+      - name: Build (ESM + CJS)
+        run: npm run build -w @carbuddy/domain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: domain-dist
+          path: packages/domain/dist
+          retention-days: 1
+
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    needs: domain
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: carbuddy
+          POSTGRES_PASSWORD: carbuddy
+          POSTGRES_DB: carbuddy_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://carbuddy:carbuddy@localhost:5432/carbuddy_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: domain-dist
+          path: packages/domain/dist
+      - name: Generate Prisma client
+        run: npm run prisma:generate -w @carbuddy/api
+      - name: Validate schema
+        run: npx prisma validate --schema apps/api/prisma/schema.prisma
+      - name: Apply migrations
+        run: npm run prisma:deploy -w @carbuddy/api
+      - name: Typecheck
+        run: npm run typecheck -w @carbuddy/api
+      - name: Test
+        run: npm run test -w @carbuddy/api
+      - name: Build
+        run: npm run build -w @carbuddy/api
+
+  mobile:
+    name: Mobile
+    runs-on: ubuntu-latest
+    needs: domain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: domain-dist
+          path: packages/domain/dist
+      - name: Typecheck
+        run: npm run typecheck -w @carbuddy/mobile
+      - name: Verify Expo config resolves for every environment
+        # Catches a broken app.config.ts before it fails an EAS build, which is
+        # a much slower and more expensive place to find out.
+        run: |
+          for env in development staging production; do
+            APP_ENV=$env npx expo config --type public --json > /dev/null \
+              && echo "  $env: ok" \
+              || { echo "  $env: FAILED"; exit 1; }
+          done
+        working-directory: apps/mobile
+
+  lint:
+    name: Lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Prettier
+        run: npm run format:check

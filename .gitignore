@@ -1,0 +1,41 @@
+node_modules/
+dist/
+build/
+coverage/
+.expo/
+.expo-shared/
+web-build/
+*.tsbuildinfo
+
+# native
+ios/
+android/
+*.ipa
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+*.mobileprovision
+*.p8
+*.p12
+*.cer
+
+# env & secrets
+.env
+.env.*
+!.env.example
+google-services.json
+GoogleService-Info.plist
+service-account.json
+
+# db
+*.db
+*.sqlite
+*.sqlite3
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

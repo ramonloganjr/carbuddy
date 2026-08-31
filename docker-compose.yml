@@ -1,0 +1,69 @@
+# Local development stack: PostgreSQL, the API, and MinIO standing in for S3.
+#
+# Everything here is configured for convenience, not security — the credentials
+# are fixed and well known on purpose. Nothing in this file is suitable for
+# anything reachable from the internet.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: carbuddy
+      POSTGRES_PASSWORD: carbuddy
+      POSTGRES_DB: carbuddy
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # The API waits on this, so a `docker compose up` does not race the
+      # database's first-boot initialisation.
+      test: ['CMD-SHELL', 'pg_isready -U carbuddy -d carbuddy']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: carbuddy
+      MINIO_ROOT_PASSWORD: carbuddy-dev-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://carbuddy:carbuddy@postgres:5432/carbuddy?schema=public
+      JWT_ACCESS_SECRET: local-development-access-secret-not-for-production
+      JWT_REFRESH_SECRET: local-development-refresh-secret-not-for-production
+      FIELD_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_BUCKET: carbuddy-attachments
+      STORAGE_ACCESS_KEY_ID: carbuddy
+      STORAGE_SECRET_ACCESS_KEY: carbuddy-dev-secret
+    ports:
+      - '4000:4000'
+
+volumes:
+  postgres-data:
+  minio-data:
