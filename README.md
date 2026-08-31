@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚗 CarBuddy
+# CarBuddy
 
 **Know your car. Understand its costs. Maintain it on time. Keep everything in one place.**
 
@@ -120,7 +120,7 @@ are there for anyone who wants them, and demanded of nobody.
 
 ## Features
 
-### 🚙 Digital garage
+### Digital garage
 
 - Multiple vehicles per account, switchable from the dashboard without leaving the screen
 - Full profile: make, model, variant, year, body type, colour, engine type, displacement,
@@ -133,7 +133,7 @@ are there for anyone who wants them, and demanded of nobody.
 - **VIN check-digit validation** (ISO-3779) — flagged as a warning, never a hard rejection,
   because several markets don't follow the standard
 
-### ⛽ Fuel intelligence
+### Fuel intelligence
 
 - Log every refuelling: date, odometer, volume, unit price, total, fuel type, station,
   full-tank or partial, payment method, notes, receipt photos
@@ -150,7 +150,7 @@ are there for anyone who wants them, and demanded of nobody.
 - **Live economy preview while logging** — see the figure an entry will produce _before_
   saving, so a mistyped odometer is obvious immediately rather than after it skews averages
 
-### 📉 Anomaly detection
+### Anomaly detection
 
 - Flags when recent economy drifts meaningfully from that vehicle's **own** baseline
 - Uses **median + MAD** rather than mean + standard deviation, so a single road trip or a
@@ -162,7 +162,7 @@ are there for anyone who wants them, and demanded of nobody.
   conditions, short trips, tyre pressure, load, A/C, seasonal weather, fuel quality,
   measurement accuracy
 
-### 🔧 Maintenance
+### Maintenance
 
 - 33 service categories, from engine oil to wheel alignment, plus custom
 - Each record: type, date, odometer, provider, parts replaced, parts/labour/tax/total cost,
@@ -176,7 +176,7 @@ are there for anyone who wants them, and demanded of nobody.
 - Starter schedules seeded per powertrain (petrol / diesel / hybrid / electric) so the app
   is useful on day one, with every interval editable
 
-### 🔩 Component lifecycle
+### Component lifecycle
 
 - Track tyres, battery, brake pads and discs, filters, spark plugs, belts, shocks, wipers
 - Records brand, model, specification, install date and mileage, price, warranty
@@ -185,7 +185,7 @@ are there for anyone who wants them, and demanded of nobody.
 - Tyre rotation countdown
 - **Cost per kilometre once replaced** — answers "were the expensive tyres worth it?"
 
-### 📁 Document vault
+### Document vault
 
 - Registration, licence, insurance, inspection, road tax, warranties, roadside assistance,
   invoices, purchase and financing agreements, custom documents
@@ -195,7 +195,7 @@ are there for anyone who wants them, and demanded of nobody.
 - Configurable expiry reminders at **60 / 30 / 14 / 7 / 1 days**, defaulted per document type
 - Sorted by urgency, not alphabetically — the reason to open this screen is a deadline
 
-### 🔔 Reminder engine
+### Reminder engine
 
 - One deterministic planner covers scheduled and mileage-based maintenance, overdue
   services, document expiry, component replacement, tyre rotation, fuel anomalies and your
@@ -208,7 +208,7 @@ are there for anyone who wants them, and demanded of nobody.
 - Local notifications _and_ server push — the latter covers a user who hasn't opened the
   app in two months, which local scheduling structurally cannot
 
-### 💰 Ownership costs
+### Ownership costs
 
 - 17 expense categories: fuel, maintenance, repairs, insurance, registration, parking,
   tolls, car washes, accessories, financing, fines, inspection, tyres, parts, roadside
@@ -222,7 +222,7 @@ are there for anyone who wants them, and demanded of nobody.
 - Analytics answers questions in words: _How much this year? What per month? Is my economy
   improving? Which month cost most? When is my next service?_
 
-### ❤️ Vehicle health
+### Vehicle health
 
 - A weighted 0–100 score across maintenance, documents, wear items and fuel
 - **Dimensions with no data are excluded, not scored as perfect** — an empty app doesn't
@@ -231,7 +231,7 @@ are there for anyone who wants them, and demanded of nobody.
   you're mostly on top of things; never that you're fine while insurance has lapsed
 - Every factor carries its own score, plain-language summary and a route to act on it
 
-### 📴 Offline-first
+### Offline-first
 
 - SQLite is the **source of truth**. Every screen reads locally; writes never wait on network
 - Local write and sync-queue entry commit in **one transaction** — a change can't be saved
@@ -245,7 +245,7 @@ are there for anyone who wants them, and demanded of nobody.
   with the discarded value offered back
 - Mutation coalescing, exponential backoff with jitter, soft deletes so removals propagate
 
-### 🎨 Material 3 Expressive
+### Material 3 Expressive
 
 - **Colour generated from a seed** via Google's own utilities — M3 contrast guarantees hold
   in light, dark, high-contrast and dynamic palettes by construction
@@ -255,7 +255,7 @@ are there for anyone who wants them, and demanded of nobody.
 - Tonal elevation via surface containers, not translucent overlays that wash out in dark mode
 - 22 components, 7 token modules. No screen sets a raw hex, font size or radius
 
-### ♿ Accessibility (WCAG 2.2 AA)
+### Accessibility (WCAG 2.2 AA)
 
 - **Never colour alone.** Every status pairs colour with an icon _and_ a text label
 - **Charts have real text alternatives** describing range, direction and extremes — used as
@@ -266,7 +266,7 @@ are there for anyone who wants them, and demanded of nobody.
 - Reduced motion honoured — transitions collapse to a cross-fade, they don't disappear
 - Live regions for validation errors and snackbars
 
-### 🔐 Security
+### Security
 
 | Concern           | Approach                                                                   |
 | ----------------- | -------------------------------------------------------------------------- |

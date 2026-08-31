@@ -64,7 +64,14 @@ describe('CryptoService', () => {
       expect(crypto.decrypt('v9.a.b.c')).toBeNull();
     });
 
-    it('handles unicode', () => {
+    /**
+     * Deliberately spans one, two, three and four byte UTF-8 sequences: ASCII,
+     * a Latin-1 umlaut, CJK ideographs, an em dash, and an astral-plane
+     * codepoint that JavaScript stores as a surrogate pair. A naive byte-length
+     * or `.charAt` based implementation round-trips the first three and
+     * corrupts the last, so the four-byte case is the one that earns its place.
+     */
+    it('round-trips multi-byte and astral-plane characters', () => {
       const value = 'Müller — 車両 — 🚗';
       expect(crypto.decrypt(crypto.encrypt(value))).toBe(value);
     });
