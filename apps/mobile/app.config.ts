@@ -180,7 +180,21 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-build-properties',
       {
         ios: { deploymentTarget: '15.1', useFrameworks: 'static' },
-        android: { compileSdkVersion: 36, targetSdkVersion: 36, minSdkVersion: 24 },
+        android: {
+          compileSdkVersion: 36,
+          targetSdkVersion: 36,
+          minSdkVersion: 24,
+          /**
+           * Android 9+ blocks cleartext HTTP by default, which is correct — but
+           * it also blocks a test build from reaching an API running on a
+           * developer's machine over the LAN (`http://192.168.x.x:4000`).
+           *
+           * Allowed for development and staging only. Production stays locked
+           * to HTTPS, so a misconfigured release build fails loudly rather than
+           * silently sending someone's vehicle documents over plaintext.
+           */
+          usesCleartextTraffic: APP_ENV !== 'production',
+        },
       },
     ],
   ],

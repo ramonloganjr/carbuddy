@@ -21,7 +21,6 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "@carbuddy/domain": ["../../packages/domain/src/index.ts"],
       "@/*": ["./src/*"]
     }
   },

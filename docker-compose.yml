@@ -13,7 +13,11 @@ services:
       POSTGRES_PASSWORD: carbuddy
       POSTGRES_DB: carbuddy
     ports:
-      - '5432:5432'
+      # Overridable, because plenty of machines already run Postgres on 5432.
+      # A native install bound to 127.0.0.1 silently shadows this container —
+      # connections reach the wrong server and fail with a confusing auth error.
+      # Set POSTGRES_PORT in a root .env to move the host side out of the way.
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

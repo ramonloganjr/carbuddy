@@ -1,10 +1,19 @@
-import { Controller, Get, Module } from '@nestjs/common';
+import { Controller, Get, Module, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Public } from '../auth/jwt-auth.guard';
 
 @ApiTags('health')
-@Controller('health')
+/**
+ * Version-neutral on purpose.
+ *
+ * Global URI versioning would otherwise place these at `/v1/health/*`, but
+ * orchestrators, load balancers and the Dockerfile HEALTHCHECK all probe a
+ * fixed, unversioned path. Versioning a liveness probe means every consumer
+ * has to be updated in lockstep with an API version bump, and a missed one
+ * reports the container as permanently unhealthy.
+ */
+@Controller({ path: 'health', version: VERSION_NEUTRAL })
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
